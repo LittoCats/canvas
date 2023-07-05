@@ -1,0 +1,28 @@
+{
+  "name": "@zaue/canvas",
+  "version": "0.1.1",
+  "description": "Canvas component for react.",
+  "author": "程巍巍",
+  "license": "WTFPL",
+  "source": "src/index.ts",
+  "main": "dist/main.js",
+  "module": "dist/module.js",
+  "types": "dist/types.d.ts",
+  "scripts": {
+    "build": "parcel build"
+  },
+  "keywords": [
+    "Canvas",
+    "React",
+    "Hook",
+    "Workflow"
+  ],
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "parcel": "latest"
+  },
+  "browserslist": "> 0.5%, last 2 versions, not dead"
+}
