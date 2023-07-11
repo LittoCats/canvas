@@ -60,7 +60,22 @@ type Props<T = any> = {
   after?(canvas: Canvas, context?: T): void;
 };
 
+const now = typeof performance !== 'undefined' ? () => (performance || Date).now() : () => Date.now();
+console.log(now);
+type Stat = {
+  frames: number;
+  time: number;
+  fps: number[];
+};
+const StatDefauts: Stat = {
+  frames: 0,
+  time: now(),
+  fps: Array(90).fill(0),
+};
+console.log(StatDefauts);
+
 type Context = Omit<Props, 'setup'> & {
+  stat(): Stat;
   setCanvas: (canvas: Canvas | null) => void;
   addRender: (render: Render) => void;
   delRender: (render: Render) => void;
@@ -68,14 +83,16 @@ type Context = Omit<Props, 'setup'> & {
 const Context = createContext<null | Context>(null);
 
 export default Canvas;
-export { Canvas, useRender, Surface, transform };
+export { Canvas, useRender, Surface, Stat, transform };
 
 function Canvas({ children, ...props }: PropsWithChildren<Props>) {
   const [canvas, setCanvas] = useState<Canvas | null>(null);
   const [renders, setRenders] = useState<Render[]>([]);
+  const stat = useRef<Stat>(StatDefauts);
 
   const context = useMemo(
     () => ({
+      stat: () => stat.current,
       setCanvas,
       addRender: (render: Render) =>
         setRenders((renders) => {
@@ -92,6 +109,23 @@ function Canvas({ children, ...props }: PropsWithChildren<Props>) {
     }),
     [],
   );
+
+  const dispatch = useCallback(() => {
+    const time = now();
+    if (time > stat.current.time + 1000) {
+      const fps = [
+        ...Array(Math.floor((time - stat.current.time - 1000) / 1000)).fill(0),
+        Math.max(1, Math.round((stat.current.frames * 1000) / (time - stat.current.time))),
+      ];
+      stat.current = {
+        fps: [...stat.current.fps, ...fps].slice(-stat.current.fps.length),
+        time,
+        frames: 1,
+      };
+    } else {
+      stat.current = { ...stat.current, frames: stat.current.frames + 1 };
+    }
+  }, []);
 
   const setup = useMemo(() => {
     let initialized = false;
@@ -117,8 +151,9 @@ function Canvas({ children, ...props }: PropsWithChildren<Props>) {
         console.error(e);
       }
     }
+    dispatch();
     await props.after?.(canvas, context);
-  }, [setup, canvas, props.before, props.after, renders]);
+  }, [dispatch, setup, canvas, props.before, props.after, renders]);
 
   const runloop = useMemo(() => {
     const runloop = props.runloop;
@@ -149,6 +184,53 @@ function Canvas({ children, ...props }: PropsWithChildren<Props>) {
 function Surface(props: HTMLProps<HTMLCanvasElement>) {
   const { setCanvas } = useContext(Context) || {};
   return createElement('canvas', { ...props, ref: setCanvas });
+}
+
+function Stat(props: HTMLProps<HTMLCanvasElement>) {
+  const context = useContext(Context);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useRender(
+    useCallback(() => {
+      return { time: { now: 0 }, stat: context?.stat, canvas: canvasRef.current, context: canvasRef.current?.getContext('2d') };
+    }, [context?.stat]),
+    useCallback((_, { time, stat, canvas, context }) => {
+      const stamp = now();
+      if (stamp - time.now < 1000) return;
+      time.now = stamp;
+      if (!stat || !canvas || !context) return;
+      const { fps, frames } = stat();
+
+      const ratio = window.devicePixelRatio || 1;
+      const width = fps.length * ratio;
+      const height = 48 * ratio;
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.setProperty('width', `${width / ratio}px`);
+        canvas.style.setProperty('height', `${height / ratio}px`);
+      }
+
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = '#00000033';
+      context.fillRect(0, 0, width, height);
+      const fontSize = Math.round(height / 4);
+      context.font = `${fontSize}px Arial`;
+      context.fillStyle = 'white';
+      context.fillText(`${fps.slice(-1).pop()} fps`, 10, fontSize + 5);
+      context.strokeStyle = '#00ff00';
+      context.lineWidth = width / fps.length;
+      context.beginPath();
+      const max = fps.reduce((max, it) => (max > it ? max : it), 0);
+      for (let idx = 0; idx < fps.length; idx++) {
+        const x = (idx + 0.5) * context.lineWidth;
+        context.moveTo(x, height);
+        context.lineTo(x, max === 0 ? height : height * (1 - (fps[idx] / max) * 0.66));
+      }
+      context.stroke();
+    }, []),
+  );
+
+  return createElement('canvas', { ...props, ref: canvasRef });
 }
 
 function useRender<C = any>(render: (canvas: Canvas, context: C) => any): void;
