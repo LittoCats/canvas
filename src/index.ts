@@ -65,14 +65,15 @@ console.log(now);
 type Stat = {
   frames: number;
   time: number;
+  max: number;
   fps: number[];
 };
 const StatDefauts: Stat = {
   frames: 0,
   time: now(),
+  max: 0,
   fps: Array(90).fill(0),
 };
-console.log(StatDefauts);
 
 type Context = Omit<Props, 'setup'> & {
   stat(): Stat;
@@ -119,6 +120,7 @@ function Canvas({ children, ...props }: PropsWithChildren<Props>) {
       ];
       stat.current = {
         fps: [...stat.current.fps, ...fps].slice(-stat.current.fps.length),
+        max: Math.max(stat.current.max, fps[fps.length - 1]),
         time,
         frames: 1,
       };
@@ -198,34 +200,38 @@ function Stat(props: HTMLProps<HTMLCanvasElement>) {
       if (stamp - time.now < 1000) return;
       time.now = stamp;
       if (!stat || !canvas || !context) return;
-      const { fps, frames } = stat();
+      const { fps, max } = stat();
 
       const ratio = window.devicePixelRatio || 1;
-      const width = fps.length * ratio;
-      const height = 48 * ratio;
+      const { color, fontSize: _fontSize, lineHeight: _lineHeight } = window.getComputedStyle(canvas);
+      const fontSize = parseFloat(_fontSize) * ratio;
+      const lineHeight = parseFloat(_lineHeight) * ratio;
+      // 根据 fontSize 计算高宽
+      const scale = 2.5;
+      const height = Math.ceil(lineHeight * scale);
+      const width = Math.ceil((height / 9) * 16);
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
         canvas.style.setProperty('width', `${width / ratio}px`);
         canvas.style.setProperty('height', `${height / ratio}px`);
       }
-
       context.clearRect(0, 0, width, height);
-      context.fillStyle = '#00000033';
-      context.fillRect(0, 0, width, height);
-      const fontSize = Math.round(height / 4);
+
       context.font = `${fontSize}px Arial`;
-      context.fillStyle = 'white';
-      context.fillText(`${fps.slice(-1).pop()} fps`, 10, fontSize + 5);
-      context.strokeStyle = '#00ff00';
+      context.fillStyle = color;
+      context.fillText(`${fps.slice(-1).pop()} fps`, (lineHeight - fontSize) / 2, lineHeight - (lineHeight - fontSize) / 2);
+
+      context.strokeStyle = color;
       context.lineWidth = width / fps.length;
       context.beginPath();
-      const max = fps.reduce((max, it) => (max > it ? max : it), 0);
+
       for (let idx = 0; idx < fps.length; idx++) {
         const x = (idx + 0.5) * context.lineWidth;
         context.moveTo(x, height);
-        context.lineTo(x, max === 0 ? height : height * (1 - (fps[idx] / max) * 0.66));
+        context.lineTo(x, max === 0 ? height : height * (1 - (fps[idx] / max) * (1 - 1 / scale)));
       }
+
       context.stroke();
     }, []),
   );
